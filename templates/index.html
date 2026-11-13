@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chatbot — Intelligent Rule-Based Assistant</title>
+  <meta name="description" content="A professional, standalone AI Chatbot web application powered by Python and Flask with a rule-based intent engine.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Mobile Sidebar Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 8V4H8"></path>
+              <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+              <path d="M2 14h2"></path>
+              <path d="M20 14h2"></path>
+              <path d="M15 13v2"></path>
+              <path d="M9 13v2"></path>
+            </svg>
+          </div>
+          <div class="brand-info">
+            <span class="brand-title">AI Chatbot</span>
+            <span class="brand-badge">Rule-Based</span>
+          </div>
+        </div>
+        <button class="btn-icon mobile-close-btn" id="sidebarCloseBtn" aria-label="Close sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="sidebar-action">
+        <button class="btn btn-new-chat" id="newChatBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>New Conversation</span>
+        </button>
+      </div>
+
+      <div class="conversations-header">
+        <span>Conversations</span>
+      </div>
+
+      <nav class="conversations-nav" id="conversationsList" aria-label="Conversation history">
+        <!-- Conversation items injected by JS -->
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="engine-info-card">
+          <div class="engine-info-icon">⚡</div>
+          <div class="engine-info-text">
+            <strong>Rule-Based Engine</strong>
+            <span>Python regex • Zero API keys</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="chat-main">
+      <!-- Top Navigation Header -->
+      <header class="chat-header">
+        <div class="header-left">
+          <button class="btn-icon mobile-toggle-btn" id="mobileMenuBtn" aria-label="Open sidebar menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+          <div class="header-conversation-info">
+            <h1 class="header-title" id="currentChatTitle">New Conversation</h1>
+            <span class="header-subtitle">Educational AI & ML Assistant</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="btn-header" id="clearChatBtn" title="Clear messages in this conversation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18"></path>
+              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+            </svg>
+            <span>Clear Chat</span>
+          </button>
+          <button class="btn-header" id="infoModalBtn" title="About this chatbot">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <span>About</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Chat Messages Scroll Area -->
+      <section class="chat-viewport" id="chatViewport">
+        <!-- Welcome Screen (Visible when chat is empty) -->
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-hero">
+            <div class="welcome-avatar-ring">
+              <div class="welcome-avatar">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 8V4H8"></path>
+                  <rect width="16" height="12" x="4" y="8" rx="2"></rect>
+                  <path d="M2 14h2"></path>
+                  <path d="M20 14h2"></path>
+                  <path d="M15 13v2"></path>
+                  <path d="M9 13v2"></path>
+                </svg>
+              </div>
+            </div>
+            <h2 class="welcome-title">How can I help you today?</h2>
+            <p class="welcome-desc">
+              I am a rule-based conversational assistant built with Python and Flask.
+              Explore concepts in <strong>Artificial Intelligence</strong>,
+              <strong>Machine Learning</strong>, and <strong>Programming</strong>.
+            </p>
+          </div>
+
+          <div class="prompts-grid">
+            <button class="prompt-card" data-prompt="What is Artificial Intelligence?">
+              <div class="prompt-icon">🤖</div>
+              <div class="prompt-content">
+                <strong>What is AI?</strong>
+                <span>Definitions, narrow vs. general AI</span>
+              </div>
+            </button>
+            <button class="prompt-card" data-prompt="Explain supervised vs unsupervised learning">
+              <div class="prompt-icon">📊</div>
+              <div class="prompt-content">
+                <strong>Machine Learning</strong>
+                <span>Supervised vs. unsupervised models</span>
+              </div>
+            </button>
+            <button class="prompt-card" data-prompt="What is a Python function?">
+              <div class="prompt-icon">🐍</div>
+              <div class="prompt-content">
+                <strong>Python Functions</strong>
+                <span>Syntax, parameters, and return values</span>
+              </div>
+            </button>
+            <button class="prompt-card" data-prompt="What can you do?">
+              <div class="prompt-icon">💡</div>
+              <div class="prompt-content">
+                <strong>Bot Capabilities</strong>
+                <span>View supported topics and features</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Message List -->
+        <div class="messages-list" id="messagesList" aria-live="polite"></div>
+
+        <!-- Typing Indicator -->
+        <div class="typing-bubble-wrapper" id="typingIndicator" style="display: none;">
+          <div class="message-row assistant">
+            <div class="avatar assistant-avatar" aria-hidden="true">🤖</div>
+            <div class="message-bubble typing-bubble">
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+              <span class="typing-dot"></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Message Input Form -->
+      <footer class="chat-input-bar">
+        <form class="input-form" id="chatForm">
+          <div class="input-wrapper">
+            <textarea
+              id="messageInput"
+              rows="1"
+              placeholder="Ask anything about AI, Machine Learning, or Python... (Enter to send, Shift+Enter for new line)"
+              aria-label="Chat input message"
+              maxlength="1500"
+            ></textarea>
+            <button type="submit" id="sendBtn" class="btn-send" aria-label="Send message" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </form>
+        <div class="input-footer-caption">
+          <span>AI Chatbot uses a deterministic rule-based Python response engine • No API keys required</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- About / Help Modal -->
+  <div class="modal-backdrop" id="aboutModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modalTitle">About AI Chatbot</h3>
+        <button class="btn-icon modal-close-btn" id="modalCloseBtn" aria-label="Close modal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p><strong>AI Chatbot</strong> is a standalone web application designed for interactive learning in computer science.</p>
+        
+        <h4>⚙️ Technology & Architecture</h4>
+        <ul>
+          <li><strong>Backend:</strong> Python Flask REST API (<code>/api/chat</code>)</li>
+          <li><strong>Engine:</strong> Rule-based pattern matching using regular expressions and domain dictionaries in <code>chatbot.py</code></li>
+          <li><strong>Frontend:</strong> Semantic HTML5, responsive CSS3, and Vanilla JavaScript</li>
+          <li><strong>Storage:</strong> Multi-conversation history persisted safely via <code>localStorage</code></li>
+        </ul>
+
+        <h4>🎯 Supported Knowledge Topics</h4>
+        <ul>
+          <li><strong>Artificial Intelligence:</strong> Narrow vs. General AI, NLP, Computer Vision, Generative AI</li>
+          <li><strong>Machine Learning:</strong> Supervised, Unsupervised, Reinforcement Learning, Neural Networks</li>
+          <li><strong>Programming:</strong> Variables, Loops, Functions, Conditionals, Data Structures, OOP, Debugging</li>
+          <li><strong>Conversational:</strong> Greetings, Bot Identity, Capabilities, Thanks, Goodbye, Help</li>
+        </ul>
+
+        <h4>⌨️ Keyboard Shortcuts</h4>
+        <ul>
+          <li><kbd>Enter</kbd>: Send message</li>
+          <li><kbd>Shift</kbd> + <kbd>Enter</kbd>: Insert new line</li>
+          <li><kbd>Esc</kbd>: Close modal / mobile sidebar</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="modalConfirmBtn">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
+

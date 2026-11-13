@@ -1,0 +1,7 @@
+# AI Chatbot Web Application Dependencies
+flask>=3.0.0
+pytest>=8.0.0
+
+# Optional legacy Streamlit interface
+streamlit>=1.40.0
+
