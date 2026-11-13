@@ -1,7 +1,7 @@
 """Flask Web Application for the Professional AI Chatbot.
 
 Serves the standalone frontend and provides REST API endpoints for chat
-interaction, conversation health, and engine metadata.
+interaction, conversation context management, health, and engine metadata.
 """
 
 from datetime import datetime, timezone
@@ -9,7 +9,12 @@ import logging
 import os
 from flask import Flask, jsonify, render_template, request
 
-from chatbot import clean_input, detect_intent, get_bot_response
+from chatbot import (
+    clean_input,
+    clear_conversation_context,
+    get_bot_response_details,
+    get_conversation_context,
+)
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +29,7 @@ def index():
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
-    """Process a user message and return the chatbot response."""
+    """Process a user message and return the chatbot response with context and suggestions."""
     if not request.is_json:
         return (
             jsonify({"success": False, "error": "Request body must be valid JSON"}),
@@ -67,16 +72,30 @@ def chat():
             400,
         )
 
+    conversation_id = data.get("conversation_id")
+    if conversation_id is not None and not isinstance(conversation_id, str):
+        conversation_id = str(conversation_id)
+
+    client_context = data.get("context")
+    if not isinstance(client_context, dict):
+        client_context = None
+
     try:
-        intent = detect_intent(cleaned_message)
-        response_text = get_bot_response(cleaned_message)
+        details = get_bot_response_details(
+            cleaned_message,
+            context=client_context,
+            conversation_id=conversation_id,
+        )
 
         return (
             jsonify({
                 "success": True,
                 "message": cleaned_message,
-                "response": response_text,
-                "intent": intent,
+                "response": details["response"],
+                "intent": details["intent"],
+                "suggestions": details["suggestions"],
+                "context": details["context"],
+                "conversation_id": conversation_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }),
             200,
@@ -92,6 +111,17 @@ def chat():
         )
 
 
+@app.route("/api/context/<conversation_id>", methods=["GET", "DELETE"])
+def conversation_context_endpoint(conversation_id: str):
+    """Inspect or reset context for a specific conversation."""
+    if request.method == "DELETE":
+        clear_conversation_context(conversation_id)
+        return jsonify({"success": True, "message": f"Context cleared for {conversation_id}"}), 200
+
+    context = get_conversation_context(conversation_id)
+    return jsonify({"success": True, "conversation_id": conversation_id, "context": context}), 200
+
+
 @app.route("/api/health", methods=["GET"])
 def health():
     """Health check and engine info endpoint."""
@@ -99,8 +129,8 @@ def health():
         jsonify({
             "status": "healthy",
             "service": "AI Chatbot Web Application",
-            "engine": "Rule-Based Intent Recognition Engine",
-            "version": "2.0.0",
+            "engine": "Context-Aware Rule-Based Intent Recognition Engine",
+            "version": "2.1.0",
         }),
         200,
     )

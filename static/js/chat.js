@@ -1,16 +1,20 @@
 /**
  * AI Chatbot — Client-side Application Logic
  *
- * Implements multi-conversation state management, localStorage persistence,
- * real-time API communication with Flask backend (/api/chat), safe HTML rendering,
- * and responsive UI interactions.
+ * Implements:
+ * - Multi-conversation state management & localStorage persistence
+ * - Context-aware multi-turn dialogues with Flask backend (/api/chat)
+ * - Smart clickable follow-up suggestions (2-3 chips per response)
+ * - Message action controls: Copy, Regenerate, Thumbs Up / Down feedback
+ * - Non-intrusive toast notifications and keyboard shortcuts
+ * - XSS-safe Markdown parsing (code blocks, inline code, bold, lists)
  */
 
 (() => {
   'use strict';
 
   // Storage key for persisting conversations across browser refreshes
-  const STORAGE_KEY = 'ai_chatbot_conversations_v2';
+  const STORAGE_KEY = 'ai_chatbot_conversations_v3';
 
   // State object
   const state = {
@@ -40,6 +44,7 @@
     chatForm: document.getElementById('chatForm'),
     messageInput: document.getElementById('messageInput'),
     sendBtn: document.getElementById('sendBtn'),
+    toastContainer: document.getElementById('toastContainer'),
   };
 
   // ==========================================================================
@@ -54,7 +59,6 @@
         if (Array.isArray(parsed.conversations) && parsed.conversations.length > 0) {
           state.conversations = parsed.conversations;
           state.activeConversationId = parsed.activeConversationId || state.conversations[0].id;
-          // Ensure active conversation exists
           const exists = state.conversations.some(c => c.id === state.activeConversationId);
           if (!exists) {
             state.activeConversationId = state.conversations[0].id;
@@ -101,6 +105,43 @@
   }
 
   // ==========================================================================
+  // Toast Notifications
+  // ==========================================================================
+
+  function showToast(message, type = 'info') {
+    const container = elements.toastContainer || document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'toast-icon';
+    iconSpan.textContent = type === 'success' ? '✓' : 'ℹ';
+
+    const textSpan = document.createElement('span');
+    textSpan.className = 'toast-text';
+    textSpan.textContent = message;
+
+    toast.appendChild(iconSpan);
+    toast.appendChild(textSpan);
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      toast.classList.add('show');
+    });
+
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.parentNode.removeChild(toast);
+        }
+      }, 300);
+    }, 2400);
+  }
+
+  // ==========================================================================
   // Conversation Management
   // ==========================================================================
 
@@ -109,6 +150,7 @@
       id: generateId('conv'),
       title: 'New Conversation',
       createdAt: Date.now(),
+      context: { topic: null, subtopic: null, intent: null },
       messages: [],
     };
 
@@ -138,13 +180,18 @@
     closeMobileSidebar();
   }
 
-  function deleteConversation(convId, event) {
+  async function deleteConversation(convId, event) {
     if (event) {
       event.stopPropagation();
     }
 
     const index = state.conversations.findIndex(c => c.id === convId);
     if (index === -1) return;
+
+    // Notify backend to clear context
+    try {
+      fetch(`/api/context/${convId}`, { method: 'DELETE' }).catch(() => {});
+    } catch (_) {}
 
     state.conversations.splice(index, 1);
 
@@ -154,7 +201,6 @@
     }
 
     if (state.activeConversationId === convId) {
-      // Pick next adjacent conversation
       const nextIndex = Math.min(index, state.conversations.length - 1);
       state.activeConversationId = state.conversations[nextIndex].id;
     }
@@ -162,18 +208,27 @@
     saveState();
     renderConversationsList();
     renderCurrentConversation();
+    showToast('Conversation deleted', 'info');
   }
 
-  function clearCurrentChat() {
+  async function clearCurrentChat() {
     const active = getActiveConversation();
     if (!active || active.messages.length === 0) return;
 
     if (confirm('Are you sure you want to clear messages in this conversation?')) {
       active.messages = [];
       active.title = 'New Conversation';
+      active.context = { topic: null, subtopic: null, intent: null };
+
+      // Clear backend context for this conversation
+      try {
+        fetch(`/api/context/${active.id}`, { method: 'DELETE' }).catch(() => {});
+      } catch (_) {}
+
       saveState();
       renderConversationsList();
       renderCurrentConversation();
+      showToast('Conversation cleared', 'info');
     }
   }
 
@@ -256,6 +311,135 @@
         return `<p>${trimmed.replace(/\n/g, '<br>')}</p>`;
       })
       .join('');
+  }
+
+  // ==========================================================================
+  // Message Actions (Copy, Regenerate, Feedback)
+  // ==========================================================================
+
+  function copyResponse(text, buttonEl) {
+    const doFeedback = () => {
+      buttonEl.classList.add('copied');
+      const label = buttonEl.querySelector('.action-label');
+      const oldText = label ? label.textContent : '';
+      if (label) label.textContent = 'Copied!';
+      showToast('Response copied to clipboard', 'success');
+
+      setTimeout(() => {
+        buttonEl.classList.remove('copied');
+        if (label) label.textContent = oldText;
+      }, 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(doFeedback).catch(() => {
+        fallbackCopy(text, doFeedback);
+      });
+    } else {
+      fallbackCopy(text, doFeedback);
+    }
+  }
+
+  function fallbackCopy(text, callback) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand('copy');
+      callback();
+    } catch (err) {
+      console.warn('Fallback copy failed', err);
+      showToast('Could not copy to clipboard', 'info');
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+
+  async function regenerateResponse(assistantMsg) {
+    if (state.isGenerating) return;
+    const conversation = getActiveConversation();
+    if (!conversation) return;
+
+    // Find preceding user prompt
+    const msgIdx = conversation.messages.findIndex(m => m.id === assistantMsg.id);
+    let userPrompt = null;
+    for (let i = msgIdx - 1; i >= 0; i--) {
+      if (conversation.messages[i].role === 'user') {
+        userPrompt = conversation.messages[i].content;
+        break;
+      }
+    }
+
+    if (!userPrompt) {
+      showToast('No user prompt found to regenerate.', 'info');
+      return;
+    }
+
+    state.isGenerating = true;
+    updateSendButtonState();
+    showTypingIndicator(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userPrompt,
+          conversation_id: conversation.id,
+          context: conversation.context || {},
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to regenerate response');
+      }
+
+      // Update assistant message in place
+      assistantMsg.content = data.response;
+      assistantMsg.intent = data.intent;
+      assistantMsg.suggestions = data.suggestions || [];
+      assistantMsg.timestamp = formatTime();
+
+      if (data.context) {
+        conversation.context = data.context;
+      }
+
+      saveState();
+      renderCurrentConversation();
+      showToast('Response regenerated', 'success');
+    } catch (err) {
+      console.error('Error regenerating response:', err);
+      showToast('Failed to regenerate response. Please try again.', 'info');
+    } finally {
+      state.isGenerating = false;
+      showTypingIndicator(false);
+      updateSendButtonState();
+    }
+  }
+
+  function toggleFeedback(msg, type, upBtn, downBtn) {
+    if (msg.feedback === type) {
+      msg.feedback = null;
+      upBtn.classList.remove('active');
+      downBtn.classList.remove('active');
+      showToast('Feedback removed', 'info');
+    } else {
+      msg.feedback = type;
+      if (type === 'up') {
+        upBtn.classList.add('active');
+        downBtn.classList.remove('active');
+        showToast('Thanks for your feedback! 👍', 'success');
+      } else {
+        downBtn.classList.add('active');
+        upBtn.classList.remove('active');
+        showToast('Thanks for your feedback! We will improve. 👎', 'info');
+      }
+    }
+    saveState();
   }
 
   // ==========================================================================
@@ -370,8 +554,105 @@
     meta.textContent = msg.timestamp || formatTime();
 
     contentWrap.appendChild(bubble);
-    contentWrap.appendChild(meta);
 
+    // Assistant-specific controls (Actions toolbar & Smart suggestions)
+    if (!isUser) {
+      // 1. Message Actions Toolbar
+      const actions = document.createElement('div');
+      actions.className = 'message-actions';
+
+      // Copy Button
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-action-btn copy-btn';
+      copyBtn.setAttribute('title', 'Copy response');
+      copyBtn.setAttribute('aria-label', 'Copy response to clipboard');
+      copyBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+        </svg>
+        <span class="action-label">Copy</span>
+      `;
+      copyBtn.addEventListener('click', () => copyResponse(msg.content, copyBtn));
+      actions.appendChild(copyBtn);
+
+      // Regenerate Button
+      const regenBtn = document.createElement('button');
+      regenBtn.className = 'msg-action-btn regenerate-btn';
+      regenBtn.setAttribute('title', 'Regenerate response');
+      regenBtn.setAttribute('aria-label', 'Regenerate response');
+      regenBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l6.73-1.19"></path>
+        </svg>
+        <span class="action-label">Regenerate</span>
+      `;
+      regenBtn.addEventListener('click', () => regenerateResponse(msg));
+      actions.appendChild(regenBtn);
+
+      // Thumbs Up / Down Group
+      const feedbackGroup = document.createElement('div');
+      feedbackGroup.className = 'feedback-group';
+
+      const thumbsUpBtn = document.createElement('button');
+      thumbsUpBtn.className = `msg-action-btn feedback-btn thumbs-up ${msg.feedback === 'up' ? 'active' : ''}`;
+      thumbsUpBtn.setAttribute('title', 'Helpful response');
+      thumbsUpBtn.setAttribute('aria-label', 'Thumbs up');
+      thumbsUpBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 10v12M15 10.5a3 3 0 0 0-3-3l-2-4-2 1v6h-4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a3 3 0 0 0 3-2.5l1.5-6.5a2 2 0 0 0-1.5-2.5z"></path>
+        </svg>
+      `;
+
+      const thumbsDownBtn = document.createElement('button');
+      thumbsDownBtn.className = `msg-action-btn feedback-btn thumbs-down ${msg.feedback === 'down' ? 'active' : ''}`;
+      thumbsDownBtn.setAttribute('title', 'Not helpful');
+      thumbsDownBtn.setAttribute('aria-label', 'Thumbs down');
+      thumbsDownBtn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 14V2M9 13.5a3 3 0 0 0 3 3l2 4 2-1v-6h4a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H9a3 3 0 0 0-3 2.5L4.5 12a2 2 0 0 0 1.5 2.5z"></path>
+        </svg>
+      `;
+
+      thumbsUpBtn.addEventListener('click', () => toggleFeedback(msg, 'up', thumbsUpBtn, thumbsDownBtn));
+      thumbsDownBtn.addEventListener('click', () => toggleFeedback(msg, 'down', thumbsUpBtn, thumbsDownBtn));
+
+      feedbackGroup.appendChild(thumbsUpBtn);
+      feedbackGroup.appendChild(thumbsDownBtn);
+      actions.appendChild(feedbackGroup);
+
+      contentWrap.appendChild(actions);
+
+      // 2. Smart Follow-Up Suggestions
+      if (Array.isArray(msg.suggestions) && msg.suggestions.length > 0) {
+        const sugContainer = document.createElement('div');
+        sugContainer.className = 'suggestions-container';
+
+        const sugHeader = document.createElement('span');
+        sugHeader.className = 'suggestions-header';
+        sugHeader.innerHTML = `<span>✨</span><span>Suggested follow-ups:</span>`;
+
+        const sugList = document.createElement('div');
+        sugList.className = 'suggestions-list';
+
+        msg.suggestions.forEach(suggestionText => {
+          const pill = document.createElement('button');
+          pill.className = 'suggestion-pill';
+          pill.textContent = suggestionText;
+          pill.setAttribute('aria-label', `Suggested follow-up: ${suggestionText}`);
+          pill.addEventListener('click', () => {
+            handleSendMessage(suggestionText);
+          });
+          sugList.appendChild(pill);
+        });
+
+        sugContainer.appendChild(sugHeader);
+        sugContainer.appendChild(sugList);
+        contentWrap.appendChild(sugContainer);
+      }
+    }
+
+    contentWrap.appendChild(meta);
     row.appendChild(avatar);
     row.appendChild(contentWrap);
 
@@ -427,7 +708,7 @@
 
     const conversation = getActiveConversation();
 
-    // If this is the first message in the conversation, create a friendly title
+    // If first message in conversation, generate friendly title
     if (conversation.messages.length === 0) {
       const generatedTitle =
         cleanedText.length > 28 ? `${cleanedText.slice(0, 28)}...` : cleanedText;
@@ -469,7 +750,11 @@
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: cleanedText }),
+        body: JSON.stringify({
+          message: cleanedText,
+          conversation_id: conversation.id,
+          context: conversation.context || {},
+        }),
       });
 
       const data = await response.json();
@@ -478,12 +763,19 @@
         throw new Error(data.error || `HTTP error ${response.status}`);
       }
 
+      // Update conversation context from backend
+      if (data.context) {
+        conversation.context = data.context;
+      }
+
       // Create assistant message
       const botMessage = {
         id: generateId('msg'),
         role: 'assistant',
         content: data.response,
         intent: data.intent,
+        suggestions: data.suggestions || [],
+        feedback: null,
         timestamp: formatTime(),
       };
 
@@ -502,6 +794,7 @@
         role: 'assistant',
         content:
           '⚠️ Sorry, I encountered an issue connecting to the response engine. Please make sure the server is running and try again.',
+        suggestions: ['What is AI?', 'What is Machine Learning?', 'What can you do?'],
         timestamp: formatTime(),
       };
 
@@ -564,7 +857,7 @@
     // Clear Chat Button
     elements.clearChatBtn.addEventListener('click', clearCurrentChat);
 
-    // Suggested prompt cards
+    // Suggested prompt cards on welcome screen
     document.querySelectorAll('.prompt-card').forEach(card => {
       card.addEventListener('click', () => {
         const promptText = card.getAttribute('data-prompt');
@@ -615,4 +908,3 @@
     init();
   }
 })();
-

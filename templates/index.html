@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Chatbot — Intelligent Rule-Based Assistant</title>
-  <meta name="description" content="A professional, standalone AI Chatbot web application powered by Python and Flask with a rule-based intent engine.">
+  <title>AI Chatbot — Interactive Rule-Based Assistant</title>
+  <meta name="description" content="A professional, standalone AI Chatbot web application powered by Python and Flask with context-aware rule-based intent engine and smart suggestions.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -64,8 +64,8 @@
         <div class="engine-info-card">
           <div class="engine-info-icon">⚡</div>
           <div class="engine-info-text">
-            <strong>Rule-Based Engine</strong>
-            <span>Python regex • Zero API keys</span>
+            <strong>Context-Aware Engine</strong>
+            <span>Multi-turn memory • Zero API keys</span>
           </div>
         </div>
       </div>
@@ -127,9 +127,10 @@
             </div>
             <h2 class="welcome-title">How can I help you today?</h2>
             <p class="welcome-desc">
-              I am a rule-based conversational assistant built with Python and Flask.
-              Explore concepts in <strong>Artificial Intelligence</strong>,
-              <strong>Machine Learning</strong>, and <strong>Programming</strong>.
+              I am an interactive rule-based assistant built with Python and Flask.
+              Ask questions about <strong>Artificial Intelligence</strong>,
+              <strong>Machine Learning</strong>, or <strong>Programming</strong>, and try follow-up queries like
+              <em>"Explain more"</em>, <em>"Give an example"</em>, <em>"Why?"</em>, or <em>"Compare them"</em>.
             </p>
           </div>
 
@@ -188,7 +189,7 @@
             <textarea
               id="messageInput"
               rows="1"
-              placeholder="Ask anything about AI, Machine Learning, or Python... (Enter to send, Shift+Enter for new line)"
+              placeholder="Ask anything or follow up with 'Explain more', 'Give an example', 'Why?', 'Compare them'... (Enter to send)"
               aria-label="Chat input message"
               maxlength="1500"
             ></textarea>
@@ -206,6 +207,9 @@
       </footer>
     </main>
   </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
 
   <!-- About / Help Modal -->
   <div class="modal-backdrop" id="aboutModal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -225,9 +229,10 @@
         <h4>⚙️ Technology & Architecture</h4>
         <ul>
           <li><strong>Backend:</strong> Python Flask REST API (<code>/api/chat</code>)</li>
-          <li><strong>Engine:</strong> Rule-based pattern matching using regular expressions and domain dictionaries in <code>chatbot.py</code></li>
+          <li><strong>Engine:</strong> Context-aware rule-based pattern matching in <code>chatbot.py</code></li>
+          <li><strong>Multi-turn Dialogue:</strong> Supports natural follow-ups like <em>"Explain more"</em>, <em>"Give an example"</em>, <em>"Why?"</em>, and <em>"Compare them"</em>.</li>
           <li><strong>Frontend:</strong> Semantic HTML5, responsive CSS3, and Vanilla JavaScript</li>
-          <li><strong>Storage:</strong> Multi-conversation history persisted safely via <code>localStorage</code></li>
+          <li><strong>Storage:</strong> Multi-conversation history and context persisted via <code>localStorage</code></li>
         </ul>
 
         <h4>🎯 Supported Knowledge Topics</h4>
@@ -236,6 +241,14 @@
           <li><strong>Machine Learning:</strong> Supervised, Unsupervised, Reinforcement Learning, Neural Networks</li>
           <li><strong>Programming:</strong> Variables, Loops, Functions, Conditionals, Data Structures, OOP, Debugging</li>
           <li><strong>Conversational:</strong> Greetings, Bot Identity, Capabilities, Thanks, Goodbye, Help</li>
+        </ul>
+
+        <h4>✨ Interactive Features</h4>
+        <ul>
+          <li><strong>Copy Response:</strong> Click the copy button to copy any bot message to clipboard with instant confirmation.</li>
+          <li><strong>Regenerate Response:</strong> Click regenerate to re-process the prompt with current context.</li>
+          <li><strong>Feedback:</strong> Thumbs-up and thumbs-down buttons to rate responses.</li>
+          <li><strong>Smart Follow-up Suggestions:</strong> 2–3 contextual suggestion chips following every response.</li>
         </ul>
 
         <h4>⌨️ Keyboard Shortcuts</h4>
@@ -254,4 +267,3 @@
   <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 </body>
 </html>
-
